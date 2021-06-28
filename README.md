@@ -17,3 +17,4 @@
 ```
 ./gradlew clean build report sonarqube
 ```
+### 执行完命令后，可以在build/reports文件夹下查看覆盖率
