@@ -1,0 +1,66 @@
+buildscript {
+    repositories {
+        maven { url "https://plugins.gradle.org/m2/" }
+        maven { url "https://mvnrepository.com/artifact/" }
+    }
+    dependencies {
+        classpath("org.sonarsource.scanner.gradle:sonarqube-gradle-plugin:2.7.1")
+    }
+}
+
+plugins{
+    id 'java'
+}
+
+apply plugin: "org.sonarqube"
+apply from: "${rootDir}/jacoco.gradle"
+
+sonarqube {
+    properties {
+        property "sonar.sourceEncoding", "UTF-8"
+    }
+}
+
+subprojects{
+    group = 'com.example'
+    sourceCompatibility = '1.8'
+    apply plugin: 'java'
+
+    //sonar扫描的路径
+    sonarqube {
+        properties {
+            property "sonar.sources", "src/main/java"
+            property "sonar.jacoco.reportPaths","${projectDir.path}/build/jacoco/tests.exec"
+        }
+    }
+
+    tasks.withType(JavaCompile) {
+        options.encoding = "UTF-8"
+    }
+
+    repositories {
+        mavenCentral()
+        maven {url "https://maven.aliyun.com/nexus/content/groups/public/"}
+        maven {url "http://192.168.9.39:8081/repository/maven-public/"}
+    }
+    dependencies {
+
+        //单元测试集成
+        testImplementation("org.springframework.boot:spring-boot-starter-test:${springbootVersion}") {
+            //exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+        }
+
+        //powerMock依赖
+        testImplementation("org.powermock:powermock-api-mockito2:2.0.2")
+        testImplementation("org.powermock:powermock-module-junit4:2.0.2")
+    }
+    configurations {
+        compileOnly {
+            extendsFrom annotationProcessor
+        }
+    }
+    test {
+        useJUnitPlatform()
+    }
+}
+

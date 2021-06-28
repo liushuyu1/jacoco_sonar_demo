@@ -1,0 +1,119 @@
+apply plugin: 'java'
+
+group 'org.example'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    jcenter()
+}
+
+configurations {
+    jacoco
+    jacocoRuntime
+}
+
+dependencies {
+    jacoco group: 'org.jacoco', name: 'org.jacoco.ant', version: '0.8.4', classifier: 'nodeps'
+    jacocoRuntime group: 'org.jacoco', name: 'org.jacoco.agent', version: '0.8.4', classifier: 'runtime'
+}
+
+subprojects {
+    apply plugin: 'java'
+    sourceCompatibility = 1.8
+
+    configurations {
+        jacoco
+        jacocoRuntime
+        jacocoInstrumented
+    }
+
+    dependencies {
+        testImplementation 'junit:junit:4.12'
+        jacoco group: 'org.jacoco', name: 'org.jacoco.ant', version: '0.8.4', classifier: 'nodeps'
+        jacocoRuntime group: 'org.jacoco', name: 'org.jacoco.agent', version: '0.8.4', classifier: 'runtime'
+    }
+
+    task preprocessClassesForJacoco(dependsOn: ['classes']) {
+        ext.outputDir = buildDir.path + '/classes-instrumented'
+        doLast {
+            ant.taskdef(name: 'instrument',
+                    classname: 'org.jacoco.ant.InstrumentTask',
+                    classpath: configurations.jacoco.asPath)
+            ant.instrument(destdir: outputDir) {
+                fileset(dir: sourceSets.main.java.outputDir, includes: '**/*.class', erroronmissingdir: false)
+            }
+        }
+    }
+
+    gradle.taskGraph.whenReady { graph ->
+        if (graph.hasTask(preprocessClassesForJacoco)) {
+            tasks.withType(Test) {
+                doFirst {
+                    systemProperty 'jacoco-agent.destfile', buildDir.path + '/jacoco/tests.exec'
+                    classpath -= files(sourceSets.main.java.outputDir)
+                    classpath += files(preprocessClassesForJacoco.outputDir) + configurations.jacocoRuntime
+
+                    def modulesDependencies = moduleDependencies(project)
+                    classpath -= files(modulesDependencies.jar.outputs.files)
+                    classpath += files(modulesDependencies.jacocoInstrumentedJar.outputs.files)
+                }
+            }
+        }
+    }
+
+    task jacocoInstrumentedJar(type: Jar, dependsOn: [preprocessClassesForJacoco]) {
+        baseName "${project.name}-instrumented"
+        from preprocessClassesForJacoco.outputDir
+    }
+
+    test.dependsOn preprocessClassesForJacoco
+    test.dependsOn jacocoInstrumentedJar
+
+    artifacts {
+        jacocoInstrumented jacocoInstrumentedJar
+    }
+}
+
+def moduleDependencies(Project project) {
+    ConfigurationContainer configurations = project.configurations
+    Configuration configuration = configurations.compile
+
+    DomainObjectSet<ProjectDependency> projectDependencies = configuration.dependencies.withType ProjectDependency
+    def modules = []
+    projectDependencies.forEach {
+        modules += it.dependencyProject
+        modules += moduleDependencies(it.dependencyProject)
+    }
+    return modules
+}
+
+task report() {
+    doLast {
+        ant.taskdef(name: 'report',
+                classname: 'org.jacoco.ant.ReportTask',
+                classpath: configurations.jacoco.asPath)
+        ant.report() {
+            executiondata {
+                subprojects.buildDir.path.collect { file(it + '/jacoco/tests.exec') }.findAll { it.exists() }.each {
+                    ant.file(file: it.path)
+                }
+            }
+            structure(name: 'Example') {
+                classfiles {
+                    files(subprojects.sourceSets.main.output.classesDirs).each {
+                        fileset(dir: it)
+                    }
+                }
+                sourcefiles {
+                    files(subprojects.sourceSets.main.java.srcDirs).each {
+                        fileset(dir: it)
+                    }
+                }
+            }
+            html(destdir: buildDir.path + '/reports/jacoco')
+        }
+    }
+}
+
+report.dependsOn += subprojects.test

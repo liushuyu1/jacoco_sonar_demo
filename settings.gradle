@@ -1,0 +1,5 @@
+rootProject.name = 'jacoco_sonar_demo'
+include 'controller'
+include 'service'
+include 'dao'
+
